@@ -1,7 +1,6 @@
 import React from 'react';
-import { PROBLEMS } from '../problems.js';
 
-export default function TopBar({ problemId, onSelectProblem }) {
+export default function TopBar({ activeNav, onNavigate }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -9,24 +8,22 @@ export default function TopBar({ problemId, onSelectProblem }) {
         <span className="brand-name">CodeArena</span>
       </div>
 
-      <div className="topbar-navigation">
-        <span className="nav-item active">Problems</span>
-        <span className="nav-item">Problemset</span>
-      </div>
+      <nav className="topbar-navigation">
+        <button
+          className={`nav-item ${activeNav === 'problem' ? 'active' : ''}`}
+          onClick={() => onNavigate('problem')}
+        >
+          Problems
+        </button>
+        <button
+          className={`nav-item ${activeNav === 'problemset' ? 'active' : ''}`}
+          onClick={() => onNavigate('problemset')}
+        >
+          Problemset
+        </button>
+      </nav>
 
       <div className="topbar-spacer" />
-
-      <select
-        className="problem-picker"
-        value={problemId}
-        onChange={(e) => onSelectProblem(e.target.value)}
-      >
-        {PROBLEMS.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.title}
-          </option>
-        ))}
-      </select>
     </header>
   );
 }

@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { PROBLEMS } from './problems.js';
 import { executeCode } from './api.js';
 import TopBar from './components/TopBar.jsx';
+import Problemset from './components/Problemset.jsx';
 import ProblemStatement from './components/ProblemStatement.jsx';
 import Editor from './components/Editor.jsx';
 import Console from './components/Console.jsx';
 
 export default function App() {
+  const [view, setView] = useState('problem'); // problem | problemset
   const [problemId, setProblemId] = useState(PROBLEMS[0].id);
   const problem = useMemo(
     () => PROBLEMS.find((p) => p.id === problemId),
@@ -35,6 +37,11 @@ export default function App() {
     setTab('testcases');
     setResult(null);
     setError(null);
+  };
+
+  const openProblem = (id) => {
+    changeProblem(id);
+    setView('problem');
   };
 
   const changeLanguage = (value) => {
@@ -89,14 +96,47 @@ export default function App() {
     });
   };
 
+  const navigate = (target) => {
+    if (target === 'problemset' && view !== 'problemset') {
+      setView('problemset');
+    } else if (target === 'problem' && view !== 'problem') {
+      setView('problem');
+    }
+  };
+
+  if (view === 'problemset') {
+    return (
+      <div className="app">
+        <TopBar activeNav="problemset" onNavigate={navigate} />
+        <Problemset onSelectProblem={openProblem} />
+      </div>
+    );
+  }
+
+  const selectProblemFromPicker = (id) => changeProblem(id);
+
   return (
     <div className="app">
-      <TopBar problemId={problemId} onSelectProblem={changeProblem} />
+      <TopBar activeNav="problem" onNavigate={navigate} />
 
       <main className="problemset">
         <ProblemStatement problem={problem} />
 
         <section className="col editor-col">
+          <div className="picker-row">
+            <select
+              className="problem-picker"
+              value={problemId}
+              onChange={(e) => selectProblemFromPicker(e.target.value)}
+            >
+              {PROBLEMS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <Editor
             language={language}
             code={code}

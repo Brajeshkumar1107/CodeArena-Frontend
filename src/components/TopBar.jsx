@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function TopBar({ activeNav, onNavigate }) {
+export default function TopBar({ activeNav, theme, onToggleTheme, onNavigate }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -24,6 +24,14 @@ export default function TopBar({ activeNav, onNavigate }) {
       </nav>
 
       <div className="topbar-spacer" />
+
+      <button
+        className="theme-toggle"
+        onClick={onToggleTheme}
+        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      >
+        {theme === 'dark' ? '\u2600' : '\u263D'}
+      </button>
     </header>
   );
 }

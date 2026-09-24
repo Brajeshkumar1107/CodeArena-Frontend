@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PROBLEMS } from './problems.js';
 import { executeCode } from './api.js';
 import TopBar from './components/TopBar.jsx';
@@ -8,6 +8,26 @@ import Editor from './components/Editor.jsx';
 import Console from './components/Console.jsx';
 
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('codearena-theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('codearena-theme', theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
+  const toggleTheme = () =>
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
   const [view, setView] = useState('problem'); // problem | problemset
   const [problemId, setProblemId] = useState(PROBLEMS[0].id);
   const problem = useMemo(
@@ -107,7 +127,12 @@ export default function App() {
   if (view === 'problemset') {
     return (
       <div className="app">
-        <TopBar activeNav="problemset" onNavigate={navigate} />
+        <TopBar
+          activeNav="problemset"
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onNavigate={navigate}
+        />
         <Problemset onSelectProblem={openProblem} />
       </div>
     );
@@ -117,7 +142,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar activeNav="problem" onNavigate={navigate} />
+      <TopBar
+        activeNav="problem"
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onNavigate={navigate}
+      />
 
       <main className="problemset">
         <ProblemStatement problem={problem} />

@@ -1,69 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { DIFFICULTY, PROBLEMS } from './problems.js';
 
-const LANGUAGES = {
-  PYTHON: {
-    label: 'Python',
-    ext: 'py',
-    default: `import sys
-
-def main():
-    data = sys.stdin.read().strip().split()
-    if not data:
-        return
-    a, b = int(data[0]), int(data[1])
-    print(a + b)
-
-main()
-`
-  },
-  JAVA: {
-    label: 'Java',
-    ext: 'java',
-    default: `import java.util.Scanner;
-
-public class Main {
-    public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        int a = sc.nextInt();
-        int b = sc.nextInt();
-        System.out.println(a + b);
-    }
-}
-`
-  },
-  CPP: {
-    label: 'C++',
-    ext: 'cpp',
-    default: `#include <iostream>
-
-int main() {
-    int a, b;
-    std::cin >> a >> b;
-    std::cout << a + b << std::endl;
-    return 0;
-}
-`
-  },
-  JAVASCRIPT: {
-    label: 'JavaScript',
-    ext: 'js',
-    default: `const readline = require('readline');
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
-});
-
-let lines = [];
-rl.on('line', (line) => lines.push(line));
-rl.on('close', () => {
-  const parts = lines.join(' ').split(/\\s+/).map(Number);
-  console.log(parts[0] + (parts[1] || 0));
-});
-`
-  }
-};
+const LANGUAGES = [
+  { value: 'PYTHON', label: 'Python' },
+  { value: 'JAVA', label: 'Java' },
+  { value: 'CPP', label: 'C++' },
+  { value: 'JAVASCRIPT', label: 'JavaScript' }
+];
 
 const VERDICT_LABELS = {
   ACCEPTED: 'Accepted',
@@ -76,43 +19,57 @@ const VERDICT_LABELS = {
 };
 
 export default function App() {
+  const [problemId, setProblemId] = useState(PROBLEMS[0].id);
+  const problem = useMemo(
+    () => PROBLEMS.find((p) => p.id === problemId),
+    [problemId]
+  );
+
   const [language, setLanguage] = useState('PYTHON');
-  const [mode, setMode] = useState('RUN');
-  const [code, setCode] = useState(LANGUAGES.PYTHON.default);
-  const [testCases, setTestCases] = useState([{ input: '2 3', expectedOutput: '' }]);
+  const [code, setCode] = useState(problem.starterCode.PYTHON);
+
+  const [tab, setTab] = useState('testcases'); // testcases | result
+  const [selectedCase, setSelectedCase] = useState(0);
+  const [customCases, setCustomCases] = useState([
+    { input: '2 3', expectedOutput: '5' }
+  ]);
+
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const selectLanguage = (slug) => {
-    setLanguage(slug);
-    setCode(LANGUAGES[slug].default);
+  const changeProblem = (id) => {
+    const next = PROBLEMS.find((p) => p.id === id);
+    setProblemId(id);
+    setCode(next.starterCode[language]);
+    setSelectedCase(0);
+    setCustomCases([{ input: '', expectedOutput: '' }]);
+    setTab('testcases');
+    setResult(null);
+    setError(null);
   };
 
-  const updateTestCase = (index, field, value) => {
-    const next = testCases.map((tc, i) =>
-      i === index ? { ...tc, [field]: value } : tc
+  const changeLanguage = (value) => {
+    setLanguage(value);
+    setCode(problem.starterCode[value]);
+  };
+
+  const updateCustomCase = (index, field, value) =>
+    setCustomCases(
+      customCases.map((c, i) => (i === index ? { ...c, [field]: value } : c))
     );
-    setTestCases(next);
-  };
 
-  const addTestCase = () =>
-    setTestCases([...testCases, { input: '', expectedOutput: '' }]);
+  const addCustomCase = () =>
+    setCustomCases([...customCases, { input: '', expectedOutput: '' }]);
 
-  const removeTestCase = (index) =>
-    setTestCases(testCases.filter((_, i) => i !== index));
+  const removeCustomCase = (index) =>
+    setCustomCases(customCases.filter((_, i) => i !== index));
 
-  const run = async () => {
+  const callApi = async (payload) => {
     setExecuting(true);
     setResult(null);
     setError(null);
-
-    const payload = {
-      mode,
-      language,
-      sourceCode: code,
-      testCases
-    };
+    setTab('result');
 
     try {
       const res = await fetch('/api/v1/runner/execute', {
@@ -120,7 +77,6 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
       const body = await res.json();
       if (!res.ok) {
         setError(JSON.stringify(body?.error || body, null, 2));
@@ -134,159 +90,307 @@ export default function App() {
     }
   };
 
+  // RUN: execute the currently selected / first custom test case only.
+  const onRun = () => {
+    const tc = customCases[selectedCase] || customCases[0];
+    callApi({
+      mode: 'RUN',
+      language,
+      sourceCode: code,
+      testCases: [{ input: tc.input, expectedOutput: tc.expectedOutput }]
+    });
+  };
+
+  // SUBMIT: judge against all the problem's hidden test cases.
+  const onSubmit = () => {
+    callApi({
+      mode: 'JUDGE',
+      language,
+      sourceCode: code,
+      testCases: problem.judgeTestCases
+    });
+  };
+
+  const isAccepted = result?.verdict === 'ACCEPTED';
+
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>CodeArena Runner</h1>
-        <span className="health-dot" title="Backend must be on port 8081" />
+      <header className="topbar">
+        <div className="brand">
+          <span className="logo">CA</span>
+          <span className="brand-name">CodeArena</span>
+        </div>
+
+        <div className="topbar-navigation">
+          <span className="nav-item active">Problems</span>
+          <span className="nav-item">Problemset</span>
+        </div>
+
+        <div className="topbar-spacer" />
+
+        <select
+          className="problem-picker"
+          value={problemId}
+          onChange={(e) => changeProblem(e.target.value)}
+        >
+          {PROBLEMS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
       </header>
 
-      <section className="toolbar">
-        <label>
-          Language
-          <select value={language} onChange={(e) => selectLanguage(e.target.value)}>
-            {Object.entries(LANGUAGES).map(([slug, { label }]) => (
-              <option key={slug} value={slug}>{label}</option>
+      <main className="problemset">
+        {/* ------------------------------ statement ------------------------------ */}
+        <section className="col statement-col">
+          <div className="problem-header">
+            <h2>{problem.title}</h2>
+            <span className={`difficulty dif-${problem.difficulty.toLowerCase()}`}>
+              {DIFFICULTY[problem.difficulty]}
+            </span>
+          </div>
+
+          <div className="problem-tags">
+            {problem.tags.map((t) => (
+              <span key={t} className="tag">{t}</span>
             ))}
-          </select>
-        </label>
+          </div>
 
-        <label>
-          Mode
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="RUN">RUN</option>
-            <option value="JUDGE">JUDGE</option>
-          </select>
-        </label>
-      </section>
+          <p className="problem-desc">{problem.description}</p>
 
-      <main className="grid">
-        <section className="panel editor-panel">
-          <div className="panel-title">{LANGUAGES[language].label} source ({LANGUAGES[language].ext})</div>
-          <textarea
-            className="editor"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            spellCheck={false}
-          />
-        </section>
+          {problem.examples.map((ex, i) => (
+            <div className="example" key={i}>
+              <div className="example-title">Example {i + 1}</div>
 
-        <section className="panel">
-          <div className="panel-title">Test cases</div>
-          {testCases.map((tc, i) => (
-            <div className="test-case" key={i}>
-              <div className="tc-header">
-                <span>#{i + 1}</span>
-                {testCases.length > 1 && (
-                  <button className="link" onClick={() => removeTestCase(i)}>remove</button>
-                )}
+              <div className="example-row">
+                <span className="example-label">Input:</span>
+                <pre className="example-block">{ex.input}</pre>
               </div>
-              <label>
-                Input
-                <textarea
-                  className="small"
-                  value={tc.input}
-                  onChange={(e) => updateTestCase(i, 'input', e.target.value)}
-                  spellCheck={false}
-                />
-              </label>
-              <label>
-                Expected output{mode === 'RUN' ? ' (optional)' : ''}
-                <textarea
-                  className="small"
-                  value={tc.expectedOutput}
-                  onChange={(e) => updateTestCase(i, 'expectedOutput', e.target.value)}
-                  spellCheck={false}
-                />
-              </label>
+
+              <div className="example-row">
+                <span className="example-label">Output:</span>
+                <pre className="example-block">{ex.output}</pre>
+              </div>
+
+              {!!ex.explanation && (
+                <div className="example-row">
+                  <span className="example-label">Explanation:</span>
+                  <p className="example-text">{ex.explanation}</p>
+                </div>
+              )}
             </div>
           ))}
-          <button className="link" onClick={addTestCase}>+ add test case</button>
 
-          <button className="run-btn" onClick={run} disabled={executing}>
-            {executing ? 'Executing...' : 'Run'}
-          </button>
+          <div className="constraints">
+            <div className="constraints-title">Constraints</div>
+            <ul>
+              {problem.constraints.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* ------------------------------ editor ------------------------------ */}
+        <section className="col editor-col">
+          <div className="editor-box">
+            <div className="editor-toolbar">
+              <div className="lang-tabs">
+                {LANGUAGES.map((l) => (
+                  <button
+                    key={l.value}
+                    className={`lang-tab ${language === l.value ? 'active' : ''}`}
+                    onClick={() => changeLanguage(l.value)}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <div className="action-btns">
+                <button
+                  className="btn btn-run"
+                  onClick={onRun}
+                  disabled={executing}
+                >
+                  {executing ? '...' : '\u25B6 Run'}
+                </button>
+                <button
+                  className="btn btn-submit"
+                  onClick={onSubmit}
+                  disabled={executing}
+                >
+                  {executing ? 'Judging...' : 'Submit'}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              className="editor"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="console-box">
+            <div className="console-tabs">
+              <button
+                className={`console-tab ${tab === 'testcases' ? 'active' : ''}`}
+                onClick={() => setTab('testcases')}
+              >
+                Test cases
+              </button>
+              <button
+                className={`console-tab ${tab === 'result' ? 'active' : ''}`}
+                onClick={() => setTab('result')}
+              >
+                Result
+              </button>
+            </div>
+
+            {tab === 'testcases' && (
+              <div className="testcases-pane">
+                <div className="tc-list">
+                  {customCases.map((tc, i) => (
+                    <span
+                      key={i}
+                      className={`tc-chip ${selectedCase === i ? 'active' : ''}`}
+                      onClick={() => setSelectedCase(i)}
+                    >
+                      Case {i + 1}
+                    </span>
+                  ))}
+                  <button className="tc-add" onClick={addCustomCase}>+</button>
+                </div>
+
+                <div className="tc-editor">
+                  {customCases.map((tc, i) =>
+                    selectedCase === i ? (
+                      <div className="tc-fields" key={i}>
+                        <label>
+                          Input
+                          <textarea
+                            className="tc-input"
+                            rows={3}
+                            value={tc.input}
+                            onChange={(e) => updateCustomCase(i, 'input', e.target.value)}
+                            spellCheck={false}
+                          />
+                        </label>
+                        <label>
+                          Expected output (optional)
+                          <textarea
+                            className="tc-input"
+                            rows={3}
+                            value={tc.expectedOutput}
+                            onChange={(e) =>
+                              updateCustomCase(i, 'expectedOutput', e.target.value)
+                            }
+                            spellCheck={false}
+                          />
+                        </label>
+                        {customCases.length > 1 && (
+                          <button
+                            className="tc-remove"
+                            onClick={() => removeCustomCase(i)}
+                          >
+                            remove case
+                          </button>
+                        )}
+                      </div>
+                    ) : null
+                  )}
+                  <p className="hint">
+                    Run uses the selected case. Submit judges all {problem.judgeTestCases.length} hidden test cases.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {tab === 'result' && (
+              <div className="result-pane">
+                {error && <pre className="error-box">{error}</pre>}
+
+                {!error && executing && <div className="loading">Executing...</div>}
+
+                {!error && result && (
+                  <>
+                    <div className="result-head">
+                      <span
+                        className={`verdict-badge ${
+                          isAccepted ? 'v-accepted' : 'v-rejected'
+                        }`}
+                      >
+                        {VERDICT_LABELS[result.verdict] || result.verdict}
+                      </span>
+                      <span className="result-meta">
+                        {result.executionTime} ms · {result.memoryUsed} MB
+                      </span>
+                    </div>
+
+                    {!!result.stdout && (
+                      <div className="io-block">
+                        <div className="io-label">stdout</div>
+                        <pre className="io">{result.stdout}</pre>
+                      </div>
+                    )}
+                    {!!result.stderr && (
+                      <div className="io-block">
+                        <div className="io-label">stderr</div>
+                        <pre className="io err">{result.stderr}</pre>
+                      </div>
+                    )}
+
+                    {result.testCases && result.testCases.length > 0 && (
+                      <div className="tc-results">
+                        <div className="tc-results-head">
+                          <span>Cases</span>
+                          <span>
+                            <strong>{result.passed}</strong> / {result.total} passed
+                          </span>
+                        </div>
+                        {result.testCases.map((t) => (
+                          <div className={`tc-result ${String(t.verdict) === 'ACCEPTED' ? 'ok' : 'fail'}`} key={t.order}>
+                            <div className="tc-result-top">
+                              <span className="mini-badge">
+                                {VERDICT_LABELS[t.verdict] || t.verdict}
+                              </span>
+                              <span className="tc-result-meta">
+                                {t.executionTime} ms · {t.memoryUsed} MB
+                              </span>
+                            </div>
+                            <div className="tc-result-body">
+                              <div>
+                                <span className="field-label">Input</span>
+                                <pre>{t.input}</pre>
+                              </div>
+                              <div>
+                                <span className="field-label">Expected</span>
+                                <pre>{t.expected}</pre>
+                              </div>
+                              <div>
+                                <span className="field-label">Actual</span>
+                                <pre className={String(t.verdict) === 'ACCEPTED' ? '' : 'err'}>{t.actual}</pre>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {!error && !result && !executing && (
+                  <div className="placeholder-text">
+                    Press Run or Submit to see results here.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </section>
       </main>
-
-      <section className="panel result-panel">
-        <div className="panel-title">Result</div>
-        {error && (
-          <pre className="error">{error}</pre>
-        )}
-
-        {result && (
-          <div className="result">
-            <div className="verdict">
-              <span className={`badge bad-${String(result.verdict).toLowerCase()}`}>
-                {VERDICT_LABELS[result.verdict] || result.verdict}
-              </span>
-              <span>{result.success ? 'success' : 'failure'}</span>
-            </div>
-
-            <div className="metrics">
-              <div><strong>{result.passed}</strong> / {result.total} passed</div>
-              <div>{result.executionTime} ms</div>
-              <div>{result.memoryUsed} MB</div>
-            </div>
-
-            {!!result.stdout && (
-              <div className="block">
-                <div className="subtitle">stdout</div>
-                <pre className="output">{result.stdout}</pre>
-              </div>
-            )}
-            {!!result.stderr && (
-              <div className="block">
-                <div className="subtitle">stderr</div>
-                <pre className="output err">{result.stderr}</pre>
-              </div>
-            )}
-
-            {result.testCases && result.testCases.length > 0 && (
-              <div className="block">
-                <div className="subtitle">Per test case</div>
-                <table className="tc-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>verdict</th>
-                      <th>input</th>
-                      <th>expected</th>
-                      <th>actual</th>
-                      <th>time</th>
-                      <th>mem</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.testCases.map((t) => (
-                      <tr key={t.order}>
-                        <td>{t.order}</td>
-                        <td>
-                          <span className={`badge bad-${String(t.verdict).toLowerCase()}`}>
-                            {VERDICT_LABELS[t.verdict] || t.verdict}
-                          </span>
-                        </td>
-                        <td><pre>{t.input}</pre></td>
-                        <td><pre>{t.expected}</pre></td>
-                        <td><pre>{t.actual}</pre></td>
-                        <td>{t.executionTime} ms</td>
-                        <td>{t.memoryUsed} MB</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!error && !result && (
-          <div className="placeholder">
-            Pick a language, write some code, set inputs, hit Run.
-          </div>
-        )}
-      </section>
     </div>
   );
 }
